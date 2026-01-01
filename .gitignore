@@ -7,3 +7,10 @@ dist
 # variáveis de ambiente
 .env
 .env.*
+
+# Netlify (arquivos locais)
+.netlify/
+.netlify/functions-serve/
+
+# Netlify (arquivos locais)
+.netlify/
