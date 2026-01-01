@@ -1,0 +1,1 @@
+module.exports = require('./netlify/functions/resetPassword.js')
