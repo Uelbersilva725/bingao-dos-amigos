@@ -17,6 +17,7 @@
     "@react-input/mask": "^1.0.22",
     "@supabase/supabase-js": "^2.39.8",
     "aws-sdk": "^2.1584.0",
+    "axios": "^1.13.2",
     "bcryptjs": "^3.0.3",
     "lucide-react": "^0.344.0",
     "mercadopago": "^2.11.0",
