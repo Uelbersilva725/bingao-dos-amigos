@@ -1,47 +1,56 @@
-import { Handler } from '@netlify/functions';
-import { MercadoPagoConfig, Preference } from 'mercadopago';
+import { Handler } from '@netlify/functions'
+import { MercadoPagoConfig, Preference } from 'mercadopago'
 
 const client = new MercadoPagoConfig({
   accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN!,
-});
+})
 
 export const handler: Handler = async (event) => {
   try {
-    const body = JSON.parse(event.body || '{}');
-
-    const total = body.total;
-
-    if (!total || typeof total !== 'number') {
-      console.error('Payload inválido recebido:', body);
-      return {
-        statusCode: 400,
-        body: 'Invalid payload',
-      };
+    if (!process.env.MERCADO_PAGO_ACCESS_TOKEN) {
+      throw new Error('Access token do Mercado Pago não configurado')
     }
 
-    const preference = new Preference(client);
+    const body = JSON.parse(event.body || '{}')
+    const total = Number(body.total)
 
-    const response = await preference.create({
+    if (!total || total <= 0) {
+      return {
+        statusCode: 400,
+        body: JSON.stringify({ error: 'Total inválido' }),
+      }
+    }
+
+    const preference = new Preference(client)
+
+    const result = await preference.create({
       body: {
         items: [
           {
-            title: 'Bilhete - Bingão dos Amigos',
+            title: 'Bingão dos Amigos - Aposta',
             quantity: 1,
             unit_price: total,
+            currency_id: 'BRL',
           },
         ],
+        back_urls: {
+          success: `${process.env.URL}/payment/success`,
+          failure: `${process.env.URL}/payment/failure`,
+          pending: `${process.env.URL}/payment/pending`,
+        },
+        auto_return: 'approved',
       },
-    });
+    })
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ id: response.id }),
-    };
+      body: JSON.stringify({ id: result.id }),
+    }
   } catch (error) {
-    console.error('Erro ao criar preferência:', error);
+    console.error('Erro createPreference:', error)
     return {
       statusCode: 500,
-      body: 'Erro ao criar preferência',
-    };
+      body: JSON.stringify({ error: 'Erro ao criar preferência' }),
+    }
   }
-};
+}
