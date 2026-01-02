@@ -14,6 +14,6 @@ if (publicKey && !publicKey.startsWith('APP_USR-')) {
 }
 
 export const mercadoPagoConfig = {
-  publicKey: publicKey || '',
-  accessToken: accessToken || '',
+  publicKey: import.meta.env.VITE_MERCADO_PAGO_PUBLIC_KEY,
+  accessToken: import.meta.env.VITE_MERCADO_PAGO_ACCESS_TOKEN
 };
