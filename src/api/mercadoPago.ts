@@ -6,9 +6,7 @@ export async function createPreference(total: number): Promise<{ id: string }> {
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      total,
-    }),
+    body: JSON.stringify({ total }),
   });
 
   if (!response.ok) {

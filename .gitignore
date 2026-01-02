@@ -14,3 +14,7 @@ dist
 
 # Netlify (arquivos locais)
 .netlify/
+
+.netlify/
+node_modules/
+dist/
