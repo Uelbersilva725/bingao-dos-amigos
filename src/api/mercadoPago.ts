@@ -1,18 +1,18 @@
-export async function createPreference(data: {
+export async function createPreference(payload: {
   total: number;
   userId: string;
   bets: number[][];
 }): Promise<{ id: string }> {
-
   const response = await fetch('/.netlify/functions/createPreference', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
     const text = await response.text();
-    throw new Error(text || 'Erro ao criar preferência');
+    console.error('Erro ao criar preferência:', text);
+    throw new Error('Erro ao iniciar pagamento');
   }
 
   return response.json();
