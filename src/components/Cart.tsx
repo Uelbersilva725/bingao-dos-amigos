@@ -1,103 +1,75 @@
-import React, { useState, useCallback } from 'react';
-import { useCart } from '../contexts/CartContext';
-import { useAuth } from '../contexts/AuthContext';
-import { Trash2, AlertCircle } from 'lucide-react';
-import { initMercadoPago, Wallet } from '@mercadopago/sdk-react';
-import { createPreference } from '../api/mercadoPago';
-import { mercadoPagoConfig } from '../config/mercadoPago';
-
-// Inicializa Mercado Pago
-const isValidConfig =
-  mercadoPagoConfig.publicKey &&
-  mercadoPagoConfig.publicKey.startsWith('APP_USR-');
-
-if (isValidConfig) {
-  initMercadoPago(mercadoPagoConfig.publicKey);
-}
+// src/pages/Cart.tsx
+import { useAuth } from '../contexts/AuthContext'
 
 export default function Cart() {
-  const { items, removeFromCart, total, clearCart } = useCart();
-  const { user } = useAuth();
+  const { user } = useAuth()
 
-  const [preferenceId, setPreferenceId] = useState<string>('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // EXEMPLO — ajuste se seu carrinho for dinâmico
+  const cartItems = [
+    {
+      numbers: [1, 3, 15, 31, 48, 50, 63, 69, 79, 80],
+      price: 5,
+    },
+  ]
 
-  const initPayment = useCallback(async () => {
-    if (!user || items.length === 0 || preferenceId || !isValidConfig) return;
+  const total = cartItems.reduce((acc, item) => acc + item.price, 0)
 
+  async function handleCheckout() {
     try {
-      setLoading(true);
-      setError(null);
+      if (!user) {
+        alert('Usuário não autenticado')
+        return
+      }
 
-      const bets = items.map(item => item.ticket.numbers);
+      const bets = cartItems.map(item => item.numbers)
 
-      const { id } = await createPreference({
+      console.log('ENVIANDO PARA API:', {
         total,
         user_id: user.id,
         bets,
-      });
+      })
 
-      setPreferenceId(id);
+      const response = await fetch(
+        '/.netlify/functions/createPreference',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            total,
+            user_id: user.id,
+            bets,
+          }),
+        }
+      )
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        console.error(data)
+        alert('Erro ao iniciar pagamento')
+        return
+      }
+
+      // REDIRECIONA PARA O CHECKOUT
+      window.location.href =
+        `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=${data.id}`
+
     } catch (err) {
-      console.error(err);
-      setError('Erro ao iniciar pagamento. Tente novamente.');
-    } finally {
-      setLoading(false);
+      console.error(err)
+      alert('Erro ao iniciar pagamento')
     }
-  }, [items, total, user, preferenceId]);
-
-  React.useEffect(() => {
-    initPayment();
-  }, [initPayment]);
-
-  if (!isValidConfig) {
-    return (
-      <div className="text-center text-red-600">
-        Sistema de pagamento não configurado corretamente.
-      </div>
-    );
   }
 
   return (
-    <div className="max-w-2xl mx-auto px-4">
-      <h2 className="text-2xl font-bold mb-4">Carrinho de Apostas</h2>
+    <div>
+      <h2>Carrinho</h2>
+      <p>Total: R$ {total},00</p>
 
-      {items.map(item => (
-        <div key={item.id} className="bg-white p-4 mb-3 rounded shadow">
-          <div className="flex justify-between">
-            <span>
-              Aposta – R$ {item.ticket.price},00
-            </span>
-            <button onClick={() => removeFromCart(item.id)}>
-              <Trash2 className="text-red-500" />
-            </button>
-          </div>
-          <p className="text-sm text-gray-600">
-            Números: {item.ticket.numbers.join(', ')}
-          </p>
-        </div>
-      ))}
-
-      <div className="bg-white p-4 rounded shadow mt-4">
-        <div className="flex justify-between mb-4">
-          <strong>Total</strong>
-          <strong>R$ {total},00</strong>
-        </div>
-
-        {error && (
-          <div className="bg-red-50 text-red-600 p-3 rounded mb-3">
-            <AlertCircle className="inline mr-2" />
-            {error}
-          </div>
-        )}
-
-        {loading && <p>Preparando pagamento…</p>}
-
-        {preferenceId && (
-          <Wallet initialization={{ preferenceId }} />
-        )}
-      </div>
+      <button onClick={handleCheckout}>
+        Finalizar Pagamento
+      </button>
     </div>
-  );
+  )
 }

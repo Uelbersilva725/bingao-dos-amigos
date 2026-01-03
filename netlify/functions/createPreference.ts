@@ -1,3 +1,4 @@
+// netlify/functions/createPreference.ts
 import { Handler } from '@netlify/functions'
 import { MercadoPagoConfig, Preference } from 'mercadopago'
 
@@ -8,11 +9,10 @@ const client = new MercadoPagoConfig({
 export const handler: Handler = async (event) => {
   try {
     if (!process.env.MERCADO_PAGO_ACCESS_TOKEN) {
-      throw new Error('Access token do Mercado Pago não configurado')
+      throw new Error('Access token não configurado')
     }
 
     const body = JSON.parse(event.body || '{}')
-
     const { total, user_id, bets } = body
 
     if (!total || total <= 0) {
@@ -25,7 +25,7 @@ export const handler: Handler = async (event) => {
     if (!user_id || !Array.isArray(bets) || bets.length === 0) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: 'Dados da aposta inválidos' }),
+        body: JSON.stringify({ error: 'Dados inválidos' }),
       }
     }
 
@@ -41,22 +41,15 @@ export const handler: Handler = async (event) => {
             currency_id: 'BRL',
           },
         ],
-
-        // 🔥 ESSENCIAL
         metadata: {
           user_id,
           bets,
         },
-
         back_urls: {
           success: `${process.env.URL}/payment/success`,
           failure: `${process.env.URL}/payment/failure`,
           pending: `${process.env.URL}/payment/pending`,
         },
-
-        // 🔥 ESSENCIAL
-        notification_url: `${process.env.URL}/.netlify/functions/mercadoPagoWebhook`,
-
         auto_return: 'approved',
       },
     })
@@ -66,11 +59,10 @@ export const handler: Handler = async (event) => {
       body: JSON.stringify({ id: result.id }),
     }
   } catch (error) {
-    console.error('Erro createPreference:', error)
-
+    console.error('createPreference ERROR:', error)
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'Erro ao criar preferência' }),
+      body: JSON.stringify({ error: 'Erro interno' }),
     }
   }
 }

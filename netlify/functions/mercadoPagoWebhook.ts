@@ -1,69 +1,64 @@
+// netlify/functions/mercadoPagoWebhook.ts
 import { Handler } from '@netlify/functions'
 import { MercadoPagoConfig, Payment } from 'mercadopago'
-import { supabase } from './supabaseClient'
+import { createClient } from '@supabase/supabase-js'
 
-const client = new MercadoPagoConfig({
+const mp = new MercadoPagoConfig({
   accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN!,
 })
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 export const handler: Handler = async (event) => {
   try {
     const body = JSON.parse(event.body || '{}')
 
     if (body.type !== 'payment') {
-      return { statusCode: 200, body: 'Ignored' }
+      return { statusCode: 200, body: 'ignored' }
     }
 
-    const paymentId = body.data.id
+    const payment = new Payment(mp)
+    const result = await payment.get({ id: body.data.id })
 
-    const payment = await new Payment(client).get({ id: paymentId })
-
-    if (payment.status !== 'approved') {
-      return { statusCode: 200, body: 'Payment not approved' }
+    if (result.status !== 'approved') {
+      return { statusCode: 200, body: 'not approved' }
     }
 
-    const { user_id, bets } = payment.metadata as any
+    const { user_id, bets } = result.metadata
 
-    if (!user_id || !Array.isArray(bets)) {
+    if (!user_id || !bets) {
       throw new Error('Metadata incompleta')
     }
 
-    // Buscar último concurso
-    const { data: draw, error: drawError } = await supabase
-      .from('draws')
-      .select('contest_number')
-      .order('draw_date', { ascending: false })
-      .limit(1)
-      .single()
-
-    if (drawError || !draw) {
-      throw new Error('Concurso não encontrado')
-    }
-
-    const inserts = bets.map((numbers: number[]) => ({
+    const rows = bets.map((numbers: number[]) => ({
       user_id,
-      contest_number: draw.contest_number,
       numbers,
-      payment_id: payment.id,
+      payment_id: result.id,
+      status: 'paid',
     }))
 
-    const { error: insertError } = await supabase
+    const { error } = await supabase
       .from('user_bets')
-      .insert(inserts)
+      .insert(rows)
 
-    if (insertError) {
-      throw insertError
+    if (error) {
+      console.error(error)
+      throw error
     }
 
     return {
       statusCode: 200,
-      body: JSON.stringify({ success: true }),
+      body: 'ok',
     }
-  } catch (error) {
-    console.error('Webhook error:', error)
+
+  } catch (err) {
+    console.error('WEBHOOK ERROR:', err)
     return {
       statusCode: 500,
-      body: 'Webhook error',
+      body: 'error',
     }
   }
 }
