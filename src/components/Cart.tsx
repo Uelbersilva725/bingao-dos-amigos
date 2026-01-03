@@ -1,59 +1,42 @@
-import { useState } from 'react'
-
 export default function Cart() {
-  const [loading, setLoading] = useState(false)
+  const total = 5
 
-  const totalValue = 5 // ou calcule dinamicamente
+  // EXEMPLO — pegue do seu estado real
+  const user_id = 'UUID_DO_USUARIO_LOGADO'
+  const bets = [
+    [1, 3, 15, 31, 48, 50, 63, 69, 79, 80],
+  ]
 
   const handlePayment = async () => {
     try {
-      setLoading(true)
-
       const response = await fetch('/.netlify/functions/createPreference', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          total: totalValue,
+          total,
+          user_id,
+          bets,
         }),
       })
 
       const data = await response.json()
 
-      if (!data.id) {
-        throw new Error('Preference ID não retornado')
-      }
+      if (!data.id) throw new Error('Preference ID inválido')
 
-      // 🚀 REDIRECIONAMENTO CORRETO PARA O MERCADO PAGO
       window.location.href =
         `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=${data.id}`
 
-    } catch (error) {
-      console.error(error)
-      alert('Erro ao iniciar pagamento. Tente novamente.')
-      setLoading(false)
+    } catch (err) {
+      console.error(err)
+      alert('Erro ao iniciar pagamento')
     }
   }
 
   return (
-    <div style={{ padding: 40 }}>
-      <h2>Carrinho</h2>
-      <p>Total: R$ {totalValue.toFixed(2)}</p>
-
-      <button
-        onClick={handlePayment}
-        disabled={loading}
-        style={{
-          padding: '12px 20px',
-          background: '#009ee3',
-          color: '#fff',
-          border: 'none',
-          borderRadius: 6,
-          cursor: 'pointer',
-        }}
-      >
-        {loading ? 'Redirecionando...' : 'Finalizar Pagamento'}
+    <div>
+      <h2>Total: R$ {total},00</h2>
+      <button onClick={handlePayment}>
+        Finalizar Pagamento
       </button>
     </div>
   )

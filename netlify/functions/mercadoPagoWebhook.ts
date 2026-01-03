@@ -1,64 +1,51 @@
-// netlify/functions/mercadoPagoWebhook.ts
 import { Handler } from '@netlify/functions'
 import { MercadoPagoConfig, Payment } from 'mercadopago'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from './supabaseClient'
 
-const mp = new MercadoPagoConfig({
+const client = new MercadoPagoConfig({
   accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN!,
 })
-
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
 
 export const handler: Handler = async (event) => {
   try {
     const body = JSON.parse(event.body || '{}')
 
     if (body.type !== 'payment') {
-      return { statusCode: 200, body: 'ignored' }
+      return { statusCode: 200, body: 'Ignored' }
     }
 
-    const payment = new Payment(mp)
-    const result = await payment.get({ id: body.data.id })
+    const paymentId = body.data.id
+    const payment = await new Payment(client).get({ id: paymentId })
 
-    if (result.status !== 'approved') {
-      return { statusCode: 200, body: 'not approved' }
+    if (payment.status !== 'approved') {
+      return { statusCode: 200, body: 'Payment not approved' }
     }
 
-    const { user_id, bets } = result.metadata
+    const { user_id, bets } = payment.metadata || {}
 
     if (!user_id || !bets) {
       throw new Error('Metadata incompleta')
     }
 
-    const rows = bets.map((numbers: number[]) => ({
+    const { data: draw } = await supabase
+      .from('draws')
+      .select('contest_number')
+      .order('draw_date', { ascending: false })
+      .limit(1)
+      .single()
+
+    const inserts = bets.map((numbers: number[]) => ({
       user_id,
+      contest_number: draw.contest_number,
       numbers,
-      payment_id: result.id,
-      status: 'paid',
     }))
 
-    const { error } = await supabase
-      .from('user_bets')
-      .insert(rows)
+    await supabase.from('user_bets').insert(inserts)
 
-    if (error) {
-      console.error(error)
-      throw error
-    }
+    return { statusCode: 200, body: 'OK' }
 
-    return {
-      statusCode: 200,
-      body: 'ok',
-    }
-
-  } catch (err) {
-    console.error('WEBHOOK ERROR:', err)
-    return {
-      statusCode: 500,
-      body: 'error',
-    }
+  } catch (error) {
+    console.error('WEBHOOK ERROR:', error)
+    return { statusCode: 500, body: 'Webhook error' }
   }
 }
