@@ -1,51 +1,71 @@
 import { Handler } from '@netlify/functions'
 import { MercadoPagoConfig, Payment } from 'mercadopago'
-import { supabase } from './supabaseClient'
+import { createClient } from '@supabase/supabase-js'
 
-const client = new MercadoPagoConfig({
+const mp = new MercadoPagoConfig({
   accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN!,
 })
 
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
 export const handler: Handler = async (event) => {
   try {
+    console.log('Webhook recebido:', event.body)
+
     const body = JSON.parse(event.body || '{}')
 
     if (body.type !== 'payment') {
       return { statusCode: 200, body: 'Ignored' }
     }
 
-    const paymentId = body.data.id
-    const payment = await new Payment(client).get({ id: paymentId })
-
-    if (payment.status !== 'approved') {
-      return { statusCode: 200, body: 'Payment not approved' }
+    const paymentId = body.data?.id
+    if (!paymentId) {
+      throw new Error('Payment ID ausente')
     }
 
-    const { user_id, bets } = payment.metadata || {}
+    const payment = new Payment(mp)
+    const paymentData = await payment.get({ id: paymentId })
+
+    if (paymentData.status !== 'approved') {
+      console.log('Pagamento não aprovado:', paymentData.status)
+      return { statusCode: 200, body: 'Not approved' }
+    }
+
+    const { user_id, bets } = paymentData.metadata || {}
 
     if (!user_id || !bets) {
-      throw new Error('Metadata incompleta')
+      throw new Error('Metadata ausente no pagamento')
     }
-
-    const { data: draw } = await supabase
-      .from('draws')
-      .select('contest_number')
-      .order('draw_date', { ascending: false })
-      .limit(1)
-      .single()
 
     const inserts = bets.map((numbers: number[]) => ({
       user_id,
-      contest_number: draw.contest_number,
       numbers,
+      payment_id: paymentId,
+      status: 'paid',
     }))
 
-    await supabase.from('user_bets').insert(inserts)
+    const { error } = await supabase
+      .from('user_bets')
+      .insert(inserts)
 
-    return { statusCode: 200, body: 'OK' }
+    if (error) {
+      throw error
+    }
 
-  } catch (error) {
-    console.error('WEBHOOK ERROR:', error)
-    return { statusCode: 500, body: 'Webhook error' }
+    console.log('Apostas salvas com sucesso')
+
+    return {
+      statusCode: 200,
+      body: JSON.stringify({ success: true }),
+    }
+  } catch (err) {
+    console.error('ERRO NO WEBHOOK:', err)
+    return {
+      statusCode: 500,
+      body: JSON.stringify({ error: 'Webhook error' }),
+    }
   }
 }
