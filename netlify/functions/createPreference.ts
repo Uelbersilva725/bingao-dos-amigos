@@ -1,25 +1,23 @@
 import { Handler } from '@netlify/functions'
 import { MercadoPagoConfig, Preference } from 'mercadopago'
 
+const client = new MercadoPagoConfig({
+  accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN!,
+})
+
 export const handler: Handler = async (event) => {
   try {
-    if (event.httpMethod !== 'POST') {
-      return { statusCode: 405, body: 'Method Not Allowed' }
-    }
-
     const body = JSON.parse(event.body || '{}')
-    const { total, user_id, bets } = body
+    const total = Number(body.total)
+    const user_id = body.user_id
+    const bets = body.bets
 
-    if (!total || !user_id || !bets || !Array.isArray(bets)) {
+    if (!total || !user_id || !bets) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: 'Payload inválido' }),
+        body: JSON.stringify({ error: 'Dados incompletos' }),
       }
     }
-
-    const client = new MercadoPagoConfig({
-      accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN!,
-    })
 
     const preference = new Preference(client)
 
@@ -29,7 +27,7 @@ export const handler: Handler = async (event) => {
           {
             title: 'Bingão dos Amigos - Aposta',
             quantity: 1,
-            unit_price: Number(total),
+            unit_price: total,
             currency_id: 'BRL',
           },
         ],
