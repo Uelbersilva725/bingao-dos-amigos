@@ -1,74 +1,59 @@
-// src/pages/Cart.tsx
-import { useAuth } from '../contexts/AuthContext'
+import { useState } from 'react'
 
 export default function Cart() {
-  const { user } = useAuth()
+  const [loading, setLoading] = useState(false)
 
-  // EXEMPLO — ajuste se seu carrinho for dinâmico
-  const cartItems = [
-    {
-      numbers: [1, 3, 15, 31, 48, 50, 63, 69, 79, 80],
-      price: 5,
-    },
-  ]
+  const totalValue = 5 // ou calcule dinamicamente
 
-  const total = cartItems.reduce((acc, item) => acc + item.price, 0)
-
-  async function handleCheckout() {
+  const handlePayment = async () => {
     try {
-      if (!user) {
-        alert('Usuário não autenticado')
-        return
-      }
+      setLoading(true)
 
-      const bets = cartItems.map(item => item.numbers)
-
-      console.log('ENVIANDO PARA API:', {
-        total,
-        user_id: user.id,
-        bets,
+      const response = await fetch('/.netlify/functions/createPreference', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          total: totalValue,
+        }),
       })
-
-      const response = await fetch(
-        '/.netlify/functions/createPreference',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            total,
-            user_id: user.id,
-            bets,
-          }),
-        }
-      )
 
       const data = await response.json()
 
-      if (!response.ok) {
-        console.error(data)
-        alert('Erro ao iniciar pagamento')
-        return
+      if (!data.id) {
+        throw new Error('Preference ID não retornado')
       }
 
-      // REDIRECIONA PARA O CHECKOUT
+      // 🚀 REDIRECIONAMENTO CORRETO PARA O MERCADO PAGO
       window.location.href =
         `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=${data.id}`
 
-    } catch (err) {
-      console.error(err)
-      alert('Erro ao iniciar pagamento')
+    } catch (error) {
+      console.error(error)
+      alert('Erro ao iniciar pagamento. Tente novamente.')
+      setLoading(false)
     }
   }
 
   return (
-    <div>
+    <div style={{ padding: 40 }}>
       <h2>Carrinho</h2>
-      <p>Total: R$ {total},00</p>
+      <p>Total: R$ {totalValue.toFixed(2)}</p>
 
-      <button onClick={handleCheckout}>
-        Finalizar Pagamento
+      <button
+        onClick={handlePayment}
+        disabled={loading}
+        style={{
+          padding: '12px 20px',
+          background: '#009ee3',
+          color: '#fff',
+          border: 'none',
+          borderRadius: 6,
+          cursor: 'pointer',
+        }}
+      >
+        {loading ? 'Redirecionando...' : 'Finalizar Pagamento'}
       </button>
     </div>
   )
