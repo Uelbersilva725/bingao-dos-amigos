@@ -1,153 +1,156 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useEffect, useMemo, useState } from 'react'
+import { supabase } from '../lib/supabase'
+
+type CartItem = {
+  numbers: number[]
+  price: number
+}
+
+const CART_KEY = 'bingaodosamigos_cart' // ajuste se o seu for diferente
 
 export default function Cart() {
-  const navigate = useNavigate()
-
-  const [numbers, setNumbers] = useState<number[]>([])
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
+  const [err, setErr] = useState<string | null>(null)
+  const [items, setItems] = useState<CartItem[]>([])
 
-  const PRICE_PER_BET = 5
-
-  // 🔹 Carrega números salvos (se existirem)
   useEffect(() => {
-    const saved = localStorage.getItem('selected_numbers')
-    if (saved) {
-      setNumbers(JSON.parse(saved))
+    try {
+      const raw = localStorage.getItem(CART_KEY)
+      const parsed = raw ? JSON.parse(raw) : []
+      setItems(Array.isArray(parsed) ? parsed : [])
+    } catch {
+      setItems([])
     }
   }, [])
 
-  // 🔹 Remove aposta
-  function removeBet() {
-    localStorage.removeItem('selected_numbers')
-    setNumbers([])
+  const total = useMemo(() => {
+    return items.reduce((acc, it) => acc + Number(it.price || 0), 0)
+  }, [items])
+
+  function removeItem(idx: number) {
+    const next = items.filter((_, i) => i !== idx)
+    setItems(next)
+    localStorage.setItem(CART_KEY, JSON.stringify(next))
   }
 
-  // 🔹 Inicia pagamento
-  async function handlePayment() {
-    setError(null)
-
-    if (numbers.length !== 10) {
-      setError('Selecione exatamente 10 números.')
-      return
-    }
-
-    const total = PRICE_PER_BET
+  async function finalizePayment() {
+    setErr(null)
+    setLoading(true)
 
     try {
-      setLoading(true)
+      // 1) usuário logado
+      const { data: auth } = await supabase.auth.getUser()
+      const userId = auth?.user?.id
 
-      const response = await fetch(
-        '/.netlify/functions/createPreference',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            total,
-            numbers,
-          }),
-        }
-      )
-
-      const data = await response.json()
-
-      if (!response.ok) {
-        console.error('Erro backend:', data)
-        setError(data.error || 'Erro ao iniciar pagamento')
-        setLoading(false)
+      if (!userId) {
+        setErr('Você precisa estar logado para pagar.')
         return
       }
 
-      if (!data.id) {
-        setError('ID de pagamento não retornado')
-        setLoading(false)
+      if (!items.length) {
+        setErr('Nenhuma aposta adicionada.')
         return
       }
 
-      // 🔹 Redireciona para o checkout
-      window.location.href = `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=${data.id}`
-    } catch (err) {
-      console.error(err)
-      setError('Erro inesperado ao iniciar pagamento')
+      // No seu caso, cada “aposta” parece ter 10 números
+      // Aqui vamos pagar a PRIMEIRA aposta do carrinho (ajuste se quiser pagar várias)
+      const bet = items[0]
+      const numbers = bet?.numbers || []
+      const betTotal = Number(bet?.price || 0)
+
+      if (!Array.isArray(numbers) || numbers.length !== 10) {
+        setErr('Dados inválidos: aposta precisa ter 10 números.')
+        return
+      }
+      if (!betTotal || betTotal <= 0) {
+        setErr('Dados inválidos: valor da aposta inválido.')
+        return
+      }
+
+      // 2) chama function createPreference (que já salva no banco como pending)
+      const resp = await fetch('/.netlify/functions/createPreference', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId,
+          numbers,
+          total: betTotal,
+        }),
+      })
+
+      const data = await resp.json().catch(() => ({}))
+      if (!resp.ok) {
+        setErr(data?.error || 'Erro ao iniciar pagamento.')
+        return
+      }
+
+      const initPoint = data?.init_point
+      if (!initPoint) {
+        setErr('Mercado Pago não retornou init_point.')
+        return
+      }
+
+      // 3) redireciona pro checkout do Mercado Pago
+      window.location.href = initPoint
+    } catch (e: any) {
+      setErr(e?.message || 'Erro ao iniciar pagamento.')
     } finally {
       setLoading(false)
     }
   }
 
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: 24 }}>
+    <div style={{ maxWidth: 900, margin: '24px auto', padding: 16 }}>
       <h2>Carrinho de Apostas</h2>
 
-      {numbers.length === 0 ? (
+      {items.length === 0 ? (
         <p>Nenhuma aposta adicionada.</p>
       ) : (
-        <div style={{ border: '1px solid #ddd', padding: 16, marginTop: 16 }}>
-          <p>
-            <strong>Aposta:</strong> R$ {PRICE_PER_BET.toFixed(2)}
-          </p>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {items.map((it, idx) => (
+            <div key={idx} style={{ border: '1px solid #ddd', borderRadius: 10, padding: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <div>
+                  <strong>Aposta — R$ {Number(it.price).toFixed(2)}</strong>
+                  <div>Números: {it.numbers?.join(', ')}</div>
+                </div>
+                <button onClick={() => removeItem(idx)} style={{ cursor: 'pointer' }}>
+                  Remover
+                </button>
+              </div>
+            </div>
+          ))}
 
-          <p>
-            <strong>Números:</strong>{' '}
-            {numbers.sort((a, b) => a - b).join(', ')}
-          </p>
+          <div style={{ border: '1px solid #ddd', borderRadius: 10, padding: 12 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <strong>Total</strong>
+              <strong>R$ {total.toFixed(2)}</strong>
+            </div>
 
-          <button
-            onClick={removeBet}
-            style={{
-              marginTop: 8,
-              background: '#e53935',
-              color: '#fff',
-              border: 'none',
-              padding: '6px 12px',
-              cursor: 'pointer',
-            }}
-          >
-            Remover
-          </button>
+            {err && (
+              <div style={{ marginTop: 10, color: '#b00020' }}>
+                {err}
+              </div>
+            )}
+
+            <button
+              onClick={finalizePayment}
+              disabled={loading}
+              style={{
+                marginTop: 12,
+                width: '100%',
+                padding: '12px 16px',
+                borderRadius: 10,
+                border: 'none',
+                cursor: 'pointer',
+                opacity: loading ? 0.7 : 1,
+              }}
+            >
+              {loading ? 'Iniciando...' : 'Finalizar Pagamento'}
+            </button>
+          </div>
         </div>
       )}
-
-      <div style={{ marginTop: 24 }}>
-        <p>
-          <strong>Total:</strong> R$ {PRICE_PER_BET.toFixed(2)}
-        </p>
-
-        {error && (
-          <p style={{ color: 'red', marginTop: 8 }}>{error}</p>
-        )}
-
-        <button
-          onClick={handlePayment}
-          disabled={loading || numbers.length === 0}
-          style={{
-            marginTop: 16,
-            background: loading ? '#aaa' : '#4caf50',
-            color: '#fff',
-            border: 'none',
-            padding: '12px 24px',
-            fontSize: 16,
-            cursor: loading ? 'not-allowed' : 'pointer',
-          }}
-        >
-          {loading ? 'Processando...' : 'Finalizar Pagamento'}
-        </button>
-      </div>
-
-      <button
-        onClick={() => navigate('/')}
-        style={{
-          marginTop: 24,
-          background: 'transparent',
-          border: 'none',
-          color: '#1976d2',
-          cursor: 'pointer',
-        }}
-      >
-        ← Voltar
-      </button>
     </div>
   )
 }
