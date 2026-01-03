@@ -1,12 +1,18 @@
 // src/api/mercadoPago.ts
 
-export async function createPreference(total: number): Promise<{ id: string }> {
+interface CreatePreferencePayload {
+  total: number;
+  user_id: number;
+  bets: number[][];
+}
+
+export async function createPreference(
+  payload: CreatePreferencePayload
+): Promise<{ id: string }> {
   const response = await fetch('/.netlify/functions/createPreference', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ total }),
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {
