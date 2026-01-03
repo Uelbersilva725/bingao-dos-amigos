@@ -1,70 +1,153 @@
-import React, { useEffect, useState } from 'react';
-import { useCart } from '../contexts/CartContext';
-import { useAuth } from '../contexts/AuthContext';
-import { Wallet } from '@mercadopago/sdk-react';
-import { createPreference } from '../api/mercadoPago';
+import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 
 export default function Cart() {
-  const { items, total, removeFromCart } = useCart();
-  const { user } = useAuth();
+  const navigate = useNavigate()
 
-  const [preferenceId, setPreferenceId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [numbers, setNumbers] = useState<number[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
+  const PRICE_PER_BET = 5
+
+  // 🔹 Carrega números salvos (se existirem)
   useEffect(() => {
-    async function initPayment() {
-      if (!user || items.length === 0) return;
+    const saved = localStorage.getItem('selected_numbers')
+    if (saved) {
+      setNumbers(JSON.parse(saved))
+    }
+  }, [])
 
-      try {
-        setLoading(true);
-        setError(null);
+  // 🔹 Remove aposta
+  function removeBet() {
+    localStorage.removeItem('selected_numbers')
+    setNumbers([])
+  }
 
-        const response = await createPreference({
-          total,
-          userId: user.id, // ✅ UUID REAL
-          bets: items.map(item => item.ticket.numbers),
-        });
+  // 🔹 Inicia pagamento
+  async function handlePayment() {
+    setError(null)
 
-        setPreferenceId(response.id);
-      } catch (err: any) {
-        setError(err.message || 'Erro ao iniciar pagamento');
-      } finally {
-        setLoading(false);
-      }
+    if (numbers.length !== 10) {
+      setError('Selecione exatamente 10 números.')
+      return
     }
 
-    initPayment();
-  }, [items, total, user]);
+    const total = PRICE_PER_BET
 
-  if (!user) {
-    return <p className="text-center">Faça login para continuar</p>;
+    try {
+      setLoading(true)
+
+      const response = await fetch(
+        '/.netlify/functions/createPreference',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            total,
+            numbers,
+          }),
+        }
+      )
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        console.error('Erro backend:', data)
+        setError(data.error || 'Erro ao iniciar pagamento')
+        setLoading(false)
+        return
+      }
+
+      if (!data.id) {
+        setError('ID de pagamento não retornado')
+        setLoading(false)
+        return
+      }
+
+      // 🔹 Redireciona para o checkout
+      window.location.href = `https://www.mercadopago.com.br/checkout/v1/redirect?pref_id=${data.id}`
+    } catch (err) {
+      console.error(err)
+      setError('Erro inesperado ao iniciar pagamento')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
-    <div className="max-w-xl mx-auto p-4">
-      <h2 className="text-xl font-bold mb-4">Carrinho de Apostas</h2>
+    <div style={{ maxWidth: 900, margin: '0 auto', padding: 24 }}>
+      <h2>Carrinho de Apostas</h2>
 
-      {items.map(item => (
-        <div key={item.id} className="border p-3 rounded mb-2">
-          <p>Números: {item.ticket.numbers.join(', ')}</p>
+      {numbers.length === 0 ? (
+        <p>Nenhuma aposta adicionada.</p>
+      ) : (
+        <div style={{ border: '1px solid #ddd', padding: 16, marginTop: 16 }}>
+          <p>
+            <strong>Aposta:</strong> R$ {PRICE_PER_BET.toFixed(2)}
+          </p>
+
+          <p>
+            <strong>Números:</strong>{' '}
+            {numbers.sort((a, b) => a - b).join(', ')}
+          </p>
+
           <button
-            className="text-red-500 text-sm"
-            onClick={() => removeFromCart(item.id)}
+            onClick={removeBet}
+            style={{
+              marginTop: 8,
+              background: '#e53935',
+              color: '#fff',
+              border: 'none',
+              padding: '6px 12px',
+              cursor: 'pointer',
+            }}
           >
             Remover
           </button>
         </div>
-      ))}
-
-      <p className="font-bold mt-4">Total: R$ {total},00</p>
-
-      {loading && <p>Preparando pagamento...</p>}
-      {error && <p className="text-red-600">{error}</p>}
-
-      {preferenceId && (
-        <Wallet initialization={{ preferenceId }} />
       )}
+
+      <div style={{ marginTop: 24 }}>
+        <p>
+          <strong>Total:</strong> R$ {PRICE_PER_BET.toFixed(2)}
+        </p>
+
+        {error && (
+          <p style={{ color: 'red', marginTop: 8 }}>{error}</p>
+        )}
+
+        <button
+          onClick={handlePayment}
+          disabled={loading || numbers.length === 0}
+          style={{
+            marginTop: 16,
+            background: loading ? '#aaa' : '#4caf50',
+            color: '#fff',
+            border: 'none',
+            padding: '12px 24px',
+            fontSize: 16,
+            cursor: loading ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {loading ? 'Processando...' : 'Finalizar Pagamento'}
+        </button>
+      </div>
+
+      <button
+        onClick={() => navigate('/')}
+        style={{
+          marginTop: 24,
+          background: 'transparent',
+          border: 'none',
+          color: '#1976d2',
+          cursor: 'pointer',
+        }}
+      >
+        ← Voltar
+      </button>
     </div>
-  );
+  )
 }
