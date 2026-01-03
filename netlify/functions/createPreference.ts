@@ -8,14 +8,12 @@ const client = new MercadoPagoConfig({
 export const handler: Handler = async (event) => {
   try {
     const body = JSON.parse(event.body || '{}')
-    const total = Number(body.total)
-    const user_id = body.user_id
-    const bets = body.bets
+    const { total, userId, bets } = body
 
-    if (!total || !user_id || !bets) {
+    if (!total || !userId || !Array.isArray(bets)) {
       return {
         statusCode: 400,
-        body: JSON.stringify({ error: 'Dados incompletos' }),
+        body: JSON.stringify({ error: 'Dados inválidos' }),
       }
     }
 
@@ -25,23 +23,21 @@ export const handler: Handler = async (event) => {
       body: {
         items: [
           {
-            title: 'Bingão dos Amigos - Aposta',
+            title: 'Bingão dos Amigos - Apostas',
             quantity: 1,
             unit_price: total,
             currency_id: 'BRL',
           },
         ],
+
+        // 👇 ESSENCIAL
+        external_reference: userId,
         metadata: {
-          user_id,
+          user_id: userId,
           bets,
         },
-        notification_url:
-          'https://bingaodosamigos.netlify.app/.netlify/functions/mercadoPagoWebhook',
-        back_urls: {
-          success: `${process.env.URL}/payment/success`,
-          failure: `${process.env.URL}/payment/failure`,
-          pending: `${process.env.URL}/payment/pending`,
-        },
+
+        notification_url: `${process.env.URL}/.netlify/functions/mercadoPagoWebhook`,
         auto_return: 'approved',
       },
     })
@@ -54,7 +50,7 @@ export const handler: Handler = async (event) => {
     console.error('Erro createPreference:', error)
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'Erro ao criar preferência' }),
+      body: JSON.stringify({ error: 'Erro interno' }),
     }
   }
 }

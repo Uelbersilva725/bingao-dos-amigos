@@ -1,15 +1,10 @@
 import { Handler } from '@netlify/functions'
 import { MercadoPagoConfig, Payment } from 'mercadopago'
-import { createClient } from '@supabase/supabase-js'
+import { supabase } from './supabaseClient'
 
-const mp = new MercadoPagoConfig({
+const client = new MercadoPagoConfig({
   accessToken: process.env.MERCADO_PAGO_ACCESS_TOKEN!,
 })
-
-const supabase = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-)
 
 export const handler: Handler = async (event) => {
   try {
@@ -18,33 +13,37 @@ export const handler: Handler = async (event) => {
     const body = JSON.parse(event.body || '{}')
 
     if (body.type !== 'payment') {
-      return { statusCode: 200, body: 'Ignored' }
+      return { statusCode: 200, body: 'Ignorado' }
     }
 
-    const paymentId = body.data?.id
-    if (!paymentId) {
-      throw new Error('Payment ID ausente')
+    const paymentId = body.data.id
+    const payment = await new Payment(client).get({ id: paymentId })
+
+    if (payment.status !== 'approved') {
+      return { statusCode: 200, body: 'Pagamento não aprovado' }
     }
 
-    const payment = new Payment(mp)
-    const paymentData = await payment.get({ id: paymentId })
+    const { user_id, bets } = payment.metadata as any
 
-    if (paymentData.status !== 'approved') {
-      console.log('Pagamento não aprovado:', paymentData.status)
-      return { statusCode: 200, body: 'Not approved' }
+    if (!user_id || !Array.isArray(bets)) {
+      throw new Error('Metadata inválida')
     }
 
-    const { user_id, bets } = paymentData.metadata || {}
+    const { data: draw } = await supabase
+      .from('draws')
+      .select('contest_number')
+      .order('draw_date', { ascending: false })
+      .limit(1)
+      .single()
 
-    if (!user_id || !bets) {
-      throw new Error('Metadata ausente no pagamento')
+    if (!draw) {
+      throw new Error('Nenhum sorteio encontrado')
     }
 
     const inserts = bets.map((numbers: number[]) => ({
-      user_id,
+      user_id, // UUID REAL
+      contest_number: draw.contest_number,
       numbers,
-      payment_id: paymentId,
-      status: 'paid',
     }))
 
     const { error } = await supabase
@@ -61,11 +60,11 @@ export const handler: Handler = async (event) => {
       statusCode: 200,
       body: JSON.stringify({ success: true }),
     }
-  } catch (err) {
-    console.error('ERRO NO WEBHOOK:', err)
+  } catch (error) {
+    console.error('ERRO NO WEBHOOK:', error)
     return {
       statusCode: 500,
-      body: JSON.stringify({ error: 'Webhook error' }),
+      body: 'Erro no webhook',
     }
   }
 }
